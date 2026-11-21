@@ -104,7 +104,7 @@ stages:
               scriptType: bash
               addSpnToEnvironment: true
               scriptLocation: scriptPath
-              scriptPath: $(Build.SourcesDirectory)/atlas-07-ArgoCD-GitOps/scripts/build.sh
+              scriptPath: $(Build.SourcesDirectory)/atlas-07-argocd-gitops/scripts/build.sh
               arguments: "$(ACR_NAME) $(ACR_LOGIN_SERVER) $(Build.BuildId)"
 
   # ══════════════════════════════════════════════════════

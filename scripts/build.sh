@@ -12,7 +12,7 @@ IMAGE_NAME="atlas-platform-app"
 FULL_IMAGE="${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${BUILD_ID}"
 
 # Multi-repo checkout paths (ADO creates subdirs per repo)
-SELF_DIR="${BUILD_SOURCESDIRECTORY}/atlas-07-ArgoCD-GitOps"
+SELF_DIR="${BUILD_SOURCESDIRECTORY}/atlas-07-argocd-gitops"
 APP_DIR="${BUILD_SOURCESDIRECTORY}/atlas-platform-app"
 
 echo "Self repo: ${SELF_DIR}"
