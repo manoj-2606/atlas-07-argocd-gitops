@@ -6,6 +6,7 @@ WORKDIR /build
 COPY requirements.txt .
 RUN pip install --no-cache-dir --timeout=120 --retries=10 \
     --trusted-host pypi.org --trusted-host files.pythonhosted.org \
+    --index-url https://pypi.org/simple/ \
     -r requirements.txt
 
 # Copy app source — lands at /build/app/
