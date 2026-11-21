@@ -41,6 +41,7 @@ PULL-BASED (P7 — GitOps):
   Pipeline: build image → push to ACR → install ArgoCD → configure Application CRD
   ArgoCD:   watch Git repo → detect drift → sync Helm chart → self-heal
 ```
+![Architecture](docs/architecture.png)
 
 ### GitOps Data Flow
 
