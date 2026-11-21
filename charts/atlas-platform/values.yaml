@@ -1,0 +1,49 @@
+replicaCount: 1
+
+image:
+  repository: ""    # Set by ArgoCD Application helm parameters
+  tag: "latest"     # Updated by pipeline → ArgoCD detects → syncs
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8000
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+# B2s-safe probe settings (P6 CrashLoopBackOff fix)
+# ALL fields MUST be in BOTH values.yaml AND deployment.yaml template
+probes:
+  liveness:
+    path: /health
+    port: 8000
+    initialDelaySeconds: 30    # 30s minimum for B2s
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 5
+  readiness:
+    path: /health
+    port: 8000
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+
+env:
+  APP_ENV: "dev"
+
+labels:
+  cost-center: "atlas-learning"
+  team: "platform"
+
+securityContext:
+  runAsUser: 1000
+  runAsNonRoot: true
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false

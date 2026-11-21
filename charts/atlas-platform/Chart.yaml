@@ -1,0 +1,6 @@
+apiVersion: v2
+name: atlas-platform
+description: Atlas Platform App — FastAPI REST API (deployed by ArgoCD)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
