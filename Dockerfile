@@ -4,9 +4,9 @@ WORKDIR /build
 
 # requirements.txt is at REPO ROOT (atlas-platform-app/, not app/)
 COPY requirements.txt .
-RUN pip install --no-cache-dir --timeout=120 --retries=10 \
+RUN pip install --no-cache-dir --timeout=300 --retries=3 \
     --trusted-host pypi.org --trusted-host files.pythonhosted.org \
-    --index-url https://pypi.org/simple/ \
+    --index-url http://pypi.org/simple/ \
     -r requirements.txt
 
 # Copy app source — lands at /build/app/
