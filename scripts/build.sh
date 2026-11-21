@@ -19,6 +19,13 @@ echo "Self repo: ${SELF_DIR}"
 echo "App repo:  ${APP_DIR}"
 echo "Image:     ${FULL_IMAGE}"
 
+# Pre-download packages on host (host SSL is more stable than Docker's)
+pip install pip --quiet --break-system-packages 2>/dev/null || true
+pip download --dest "${APP_DIR}/vendor" \
+  --timeout=300 --retries=10 \
+  --trusted-host pypi.org --trusted-host files.pythonhosted.org \
+  -r "${APP_DIR}/requirements.txt"
+
 # --- Docker Build (Dockerfile from P7 repo, context from app repo) ---
 echo "[1/5] Docker Build..."
 docker build -t "${FULL_IMAGE}" -f "${SELF_DIR}/Dockerfile" "${APP_DIR}"
