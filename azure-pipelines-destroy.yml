@@ -1,0 +1,33 @@
+trigger: none    # Manual only — never auto-trigger
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  serviceConnection: "MI-ADO-API"
+  terraformVersion: "1.9.8"
+
+stages:
+  - stage: Destroy
+    displayName: "Destroy Infrastructure"
+    jobs:
+      - deployment: destroy
+        displayName: "Terraform Destroy"
+        environment: atlas-07-destroy    # Has approval gate
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+                  displayName: "Install Terraform"
+                  inputs:
+                    terraformVersion: $(terraformVersion)
+                - task: AzureCLI@2
+                  displayName: "Run destroy.sh"
+                  inputs:
+                    azureSubscription: $(serviceConnection)
+                    scriptType: bash
+                    addSpnToEnvironment: true
+                    scriptLocation: scriptPath
+                    scriptPath: $(Build.SourcesDirectory)/scripts/destroy.sh

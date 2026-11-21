@@ -1,0 +1,229 @@
+trigger: none
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  serviceConnection: "MI-ADO-API"
+  terraformVersion: "1.9.8"
+  argoCDChartVersion: "7.7.10"
+  appNamespace: "dev"
+  argoCDNamespace: "argocd"
+
+resources:
+  repositories:
+    - repository: app
+      type: git
+      name: Atlas-Platform/atlas-platform-app
+      ref: main
+
+# ══════════════════════════════════════════════════════
+# Stage 1 — Bootstrap TF Backend
+# ══════════════════════════════════════════════════════
+stages:
+  - stage: Bootstrap
+    displayName: "Stage 1 — Bootstrap TF Backend"
+    jobs:
+      - job: bootstrap
+        displayName: "Create/Verify tfstate backend"
+        steps:
+          - task: AzureCLI@2
+            displayName: "Ensure tfstate storage"
+            inputs:
+              azureSubscription: $(serviceConnection)
+              scriptType: bash
+              addSpnToEnvironment: true
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+                RG="rg-atlas-tfstate"
+                SA="atlastfstate2606"
+                CONTAINER="tfstate"
+
+                if az storage account show --name "$SA" --resource-group "$RG" &>/dev/null; then
+                  echo "✅ Backend exists: $SA"
+                else
+                  echo "Creating backend..."
+                  az group create --name "$RG" --location centralindia --output none
+                  az storage account create --name "$SA" --resource-group "$RG" \
+                    --location centralindia --sku Standard_LRS --output none
+                  az storage container create --name "$CONTAINER" \
+                    --account-name "$SA" --output none
+                  echo "✅ Backend created"
+                fi
+
+  # ══════════════════════════════════════════════════════
+  # Stage 2 — Infrastructure (Terraform)
+  # ══════════════════════════════════════════════════════
+  - stage: Infrastructure
+    displayName: "Stage 2 — Terraform (AKS + ACR)"
+    dependsOn: Bootstrap
+    jobs:
+      - deployment: infra
+        displayName: "Provision Infrastructure"
+        environment: atlas-07-deploy
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: ms-devlabs.custom-terraform-tasks.custom-terraform-installer-task.TerraformInstaller@1
+                  displayName: "Install Terraform $(terraformVersion)"
+                  inputs:
+                    terraformVersion: $(terraformVersion)
+                - task: AzureCLI@2
+                  name: tfoutputs
+                  displayName: "Run infra.sh"
+                  inputs:
+                    azureSubscription: $(serviceConnection)
+                    scriptType: bash
+                    addSpnToEnvironment: true
+                    scriptLocation: scriptPath
+                    scriptPath: $(Build.SourcesDirectory)/scripts/infra.sh
+
+  # ══════════════════════════════════════════════════════
+  # Stage 3 — Build, Scan & Push (parallel with Stage 4)
+  # ══════════════════════════════════════════════════════
+  - stage: Build
+    displayName: "Stage 3 — Build, Scan & Push"
+    dependsOn: Infrastructure
+    variables:
+      ACR_NAME: $[ stageDependencies.Infrastructure.infra.outputs['infra.tfoutputs.ACR_NAME'] ]
+      ACR_LOGIN_SERVER: $[ stageDependencies.Infrastructure.infra.outputs['infra.tfoutputs.ACR_LOGIN_SERVER'] ]
+    jobs:
+      - job: build
+        displayName: "Docker Build + Trivy + ACR Push"
+        steps:
+          - checkout: self
+          - checkout: app
+          - task: AzureCLI@2
+            name: buildoutputs
+            displayName: "Run build.sh"
+            inputs:
+              azureSubscription: $(serviceConnection)
+              scriptType: bash
+              addSpnToEnvironment: true
+              scriptLocation: scriptPath
+              scriptPath: $(Build.SourcesDirectory)/atlas-07-ArgoCD-GitOps/scripts/build.sh
+              arguments: "$(ACR_NAME) $(ACR_LOGIN_SERVER) $(Build.BuildId)"
+
+  # ══════════════════════════════════════════════════════
+  # Stage 4 — Install ArgoCD (parallel with Stage 3)
+  # ══════════════════════════════════════════════════════
+  - stage: InstallArgoCD
+    displayName: "Stage 4 — Install ArgoCD"
+    dependsOn: Infrastructure    # Only needs AKS — runs parallel with Build
+    variables:
+      AKS_NAME: $[ stageDependencies.Infrastructure.infra.outputs['infra.tfoutputs.AKS_NAME'] ]
+      RG_NAME: $[ stageDependencies.Infrastructure.infra.outputs['infra.tfoutputs.RG_NAME'] ]
+    jobs:
+      - job: install
+        displayName: "Helm Install ArgoCD"
+        steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: "Run install-argocd.sh"
+            inputs:
+              azureSubscription: $(serviceConnection)
+              scriptType: bash
+              addSpnToEnvironment: true
+              scriptLocation: scriptPath
+              scriptPath: $(Build.SourcesDirectory)/scripts/install-argocd.sh
+              arguments: "$(argoCDChartVersion) $(AKS_NAME) $(RG_NAME)"
+
+  # ══════════════════════════════════════════════════════
+  # Stage 5 — Configure ArgoCD (waits for Build + Install)
+  # ══════════════════════════════════════════════════════
+  - stage: ConfigureArgoCD
+    displayName: "Stage 5 — Configure ArgoCD Applications"
+    dependsOn:
+      - InstallArgoCD
+      - Build
+      - Infrastructure
+    variables:
+      ACR_LOGIN_SERVER: $[ stageDependencies.Infrastructure.infra.outputs['infra.tfoutputs.ACR_LOGIN_SERVER'] ]
+      AKS_NAME: $[ stageDependencies.Infrastructure.infra.outputs['infra.tfoutputs.AKS_NAME'] ]
+      RG_NAME: $[ stageDependencies.Infrastructure.infra.outputs['infra.tfoutputs.RG_NAME'] ]
+    jobs:
+      - job: configure
+        displayName: "Apply AppProject + Application CRD"
+        steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: "Run configure-argocd.sh"
+            inputs:
+              azureSubscription: $(serviceConnection)
+              scriptType: bash
+              addSpnToEnvironment: true
+              scriptLocation: scriptPath
+              scriptPath: $(Build.SourcesDirectory)/scripts/configure-argocd.sh
+              arguments: "$(ACR_LOGIN_SERVER) $(Build.BuildId) $(AKS_NAME) $(RG_NAME)"
+
+  # ══════════════════════════════════════════════════════
+  # Stage 6 — Verify
+  # ══════════════════════════════════════════════════════
+  - stage: Verify
+    displayName: "Stage 6 — Verify Deployment"
+    dependsOn:
+      - ConfigureArgoCD
+      - Infrastructure
+    variables:
+      AKS_NAME: $[ stageDependencies.Infrastructure.infra.outputs['infra.tfoutputs.AKS_NAME'] ]
+      RG_NAME: $[ stageDependencies.Infrastructure.infra.outputs['infra.tfoutputs.RG_NAME'] ]
+    jobs:
+      - job: verify
+        displayName: "Smoke Test"
+        steps:
+          - task: AzureCLI@2
+            displayName: "Verify ArgoCD + App"
+            inputs:
+              azureSubscription: $(serviceConnection)
+              scriptType: bash
+              addSpnToEnvironment: true
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -euo pipefail
+
+                az aks get-credentials \
+                  --resource-group "$(RG_NAME)" \
+                  --name "$(AKS_NAME)" \
+                  --overwrite-existing
+
+                echo "=== ArgoCD Application Status ==="
+                kubectl get application -n argocd
+
+                echo ""
+                echo "=== ArgoCD Pods ==="
+                kubectl get pods -n argocd
+
+                echo ""
+                echo "=== App Pods (deployed by ArgoCD) ==="
+                kubectl get pods -n dev
+
+                echo ""
+                echo "=== Smoke Test ==="
+                kubectl rollout status deployment/atlas-platform -n dev --timeout=120s
+                sleep 10
+
+                POD=$(kubectl get pods -n dev \
+                  -l app.kubernetes.io/name=atlas-platform \
+                  --field-selector=status.phase=Running \
+                  -o jsonpath='{.items[0].metadata.name}')
+
+                echo "Testing pod: $POD"
+                kubectl exec "$POD" -n dev -c atlas-platform -- python -c "
+                import urllib.request, json
+
+                resp = urllib.request.urlopen('http://localhost:8000/health')
+                data = json.loads(resp.read())
+                print(f'Health: {data}')
+                assert data['status'] == 'healthy', 'Health check FAILED'
+
+                resp = urllib.request.urlopen('http://localhost:8000/info')
+                data = json.loads(resp.read())
+                print(f'Info: {data}')
+                print()
+                print('✅ All verifications passed!')
+                print('   App deployed by ArgoCD — NOT by pipeline')
+                print('   GitOps paradigm verified')
+                "
