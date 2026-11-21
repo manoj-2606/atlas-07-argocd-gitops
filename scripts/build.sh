@@ -25,6 +25,7 @@ pip download --dest "${APP_DIR}/vendor" \
   --timeout=300 --retries=5 \
   --trusted-host pypi.tuna.tsinghua.edu.cn \
   --index-url https://pypi.tuna.tsinghua.edu.cn/simple/ \
+  --python-version 312 --implementation cp --abi cp312 --only-binary=:all: --platform manylinux2014_x86_64 \
   -r "${APP_DIR}/requirements.txt"
 
 # --- Docker Build (Dockerfile from P7 repo, context from app repo) ---
