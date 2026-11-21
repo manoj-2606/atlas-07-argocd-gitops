@@ -1,0 +1,22 @@
+# AppProject — RBAC boundary for ArgoCD Applications
+# Controls which repos, clusters, and namespaces an Application can access
+# Interview: "AppProject is the RBAC boundary. It scopes which repos
+#             and namespaces an Application can deploy to."
+
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: atlas-project
+  namespace: argocd
+spec:
+  description: "Atlas Platform portfolio project"
+  sourceRepos:
+    - "https://github.com/manoj-2606/atlas-07-ArgoCD-GitOps.git"
+  destinations:
+    - namespace: dev
+      server: https://kubernetes.default.svc
+    - namespace: argocd
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace

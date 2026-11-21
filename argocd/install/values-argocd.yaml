@@ -1,0 +1,44 @@
+# ArgoCD Helm chart values — resource-constrained for B2s (4GB node)
+# Total ArgoCD footprint: ~832MB (leaves room for app + system pods)
+
+server:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+repoServer:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+controller:
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+redis:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+dex:
+  enabled: false         # External SSO — not needed for portfolio
+
+notifications:
+  enabled: false         # Notifications controller — not needed
